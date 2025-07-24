@@ -6,128 +6,60 @@ class FTPService {
   final String user;
   final String pass;
   final int port;
-  final bool debug;
 
-  late FTPConnect _ftp;
+  final FTPConnect _ftp;
 
   FTPService({
     required this.host,
     required this.user,
     required this.pass,
     this.port = 21,
-    this.debug = false,
-  }) {
-    _ftp = FTPConnect(host, user: user, pass: pass, port: port);
+  }) : _ftp = FTPConnect(
+         host,
+         user: user,
+         pass: pass,
+         port: port,
+         showLog: true,
+       );
+
+  /// Connects to the FTP server. Must be called before other methods.
+  Future<void> connect() async {
+    await _ftp.connect();
   }
 
-  Future<List<String>> listDirectory([String path = '/']) async {
+  /// Disconnects from the FTP server.
+  Future<void> disconnect() async {
     try {
-      await _ftp.connect();
-
-      if (path.isNotEmpty && path != '/') {
-        await _ftp.changeDirectory(path);
-      }
-
-      final files = await _ftp.listDirectoryContent();
-
       await _ftp.disconnect();
-
-      return files.map((file) => file.name).toList();
     } catch (e) {
-      await _safeDisconnect();
-      rethrow;
+      // Ignore errors on disconnect, as the connection might already be closed.
+      print('Error during disconnect: $e');
     }
   }
 
+  /// Lists the contents of a specified directory.
+  /// Assumes an active connection.
+  Future<List<FTPEntry>> listDirectory([String path = '/']) async {
+    // Navigate to the correct directory first. The path from the UI is always absolute.
+    await _ftp.changeDirectory(path);
+    // Then list the contents of the *current* directory using the correct method.
+    final files = await _ftp.listDirectoryContent();
+    return files;
+  }
+
+  /// Downloads a remote file to a local path.
+  /// Assumes an active connection.
   Future<void> downloadFile(String remotePath, String localPath) async {
-    try {
-      await _ftp.connect();
-
-      final file = File(localPath);
-      final success = await _ftp.downloadFile(remotePath, file);
-
-      if (!success) {
-        throw Exception('Failed to download $remotePath');
-      }
-
-      await _ftp.disconnect();
-    } catch (e) {
-      await _safeDisconnect();
-      rethrow;
+    final file = File(localPath);
+    final success = await _ftp.downloadFile(remotePath, file);
+    if (!success) {
+      throw Exception('Failed to download $remotePath');
     }
   }
 
-  Future<void> uploadFile(String localPath, [String? remotePath]) async {
-    try {
-      await _ftp.connect();
-
-      final file = File(localPath);
-      final success = await _ftp.uploadFileWithRetry(
-        file,
-        pRemoteName: remotePath ?? "",
-      );
-
-      if (!success) {
-        throw Exception('Failed to upload $localPath');
-      }
-
-      await _ftp.disconnect();
-    } catch (e) {
-      await _safeDisconnect();
-      rethrow;
-    }
-  }
-
+  /// Deletes a file on the server.
+  /// Assumes an active connection.
   Future<void> deleteFile(String path) async {
-    try {
-      await _ftp.connect();
-      await _ftp.deleteFile(path);
-      await _ftp.disconnect();
-    } catch (e) {
-      await _safeDisconnect();
-      rethrow;
-    }
-  }
-
-  Future<void> createDirectory(String path) async {
-    try {
-      await _ftp.connect();
-      await _ftp.makeDirectory(path);
-      await _ftp.disconnect();
-    } catch (e) {
-      await _safeDisconnect();
-      rethrow;
-    }
-  }
-
-  Future<String> getCurrentDirectory() async {
-    try {
-      await _ftp.connect();
-      final dir = await _ftp.currentDirectory();
-      await _ftp.disconnect();
-      return dir;
-    } catch (e) {
-      await _safeDisconnect();
-      rethrow;
-    }
-  }
-
-  Future<void> changeDirectory(String path) async {
-    try {
-      await _ftp.connect();
-      await _ftp.changeDirectory(path);
-      await _ftp.disconnect();
-    } catch (e) {
-      await _safeDisconnect();
-      rethrow;
-    }
-  }
-
-  Future<void> _safeDisconnect() async {
-    try {
-      await _ftp.disconnect();
-    } catch (err) {
-      throw Exception(err);
-    }
+    await _ftp.deleteFile(path);
   }
 }

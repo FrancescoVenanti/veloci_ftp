@@ -1,7 +1,10 @@
+// lib/screens/connection_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:veloci_client/screens/ftp_home_page.dart';
 import '../services/ftp_service.dart';
+import '../widgets/connection_form.dart';
 
 class ConnectionScreen extends StatefulWidget {
   const ConnectionScreen({super.key});
@@ -10,8 +13,7 @@ class ConnectionScreen extends StatefulWidget {
   State<ConnectionScreen> createState() => _ConnectionScreenState();
 }
 
-class _ConnectionScreenState extends State<ConnectionScreen>
-    with SingleTickerProviderStateMixin {
+class _ConnectionScreenState extends State<ConnectionScreen> {
   final _formKey = GlobalKey<FormState>();
   final _hostController = TextEditingController(text: 'test.rebex.net');
   final _userController = TextEditingController(text: 'demo');
@@ -21,32 +23,36 @@ class _ConnectionScreenState extends State<ConnectionScreen>
   bool _obscurePassword = true;
   bool _isConnecting = false;
 
-  void _connect() async {
-    if (!_formKey.currentState!.validate()) return;
+  Future<void> _connect() async {
+    if (!_formKey.currentState!.validate() || _isConnecting) return;
     setState(() => _isConnecting = true);
 
-    try {
-      final ftp = FTPService(
-        host: _hostController.text.trim(),
-        user: _userController.text.trim(),
-        pass: _passController.text,
-        port: int.tryParse(_portController.text) ?? 21,
-        debug: true,
-      );
+    final ftpService = FTPService(
+      host: _hostController.text.trim(),
+      user: _userController.text.trim(),
+      pass: _passController.text,
+      port: int.tryParse(_portController.text.trim()) ?? 21,
+    );
 
-      await ftp.listDirectory();
+    try {
+      await ftpService.connect();
 
       if (mounted) {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => FTPHomePage(ftpService: ftp)),
+          MaterialPageRoute(
+            builder: (_) => FTPHomePage(ftpService: ftpService),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Connection failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connection failed: ${e.toString()}'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isConnecting = false);
@@ -72,120 +78,73 @@ class _ConnectionScreenState extends State<ConnectionScreen>
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                children: [
-                  const SizedBox(height: 24),
-                  Text(
-                    'VelociFTP',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Connect to your server',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Host
-                  TextFormField(
-                    controller: _hostController,
-                    decoration: const InputDecoration(labelText: 'Host'),
-                    validator: (v) => v!.trim().isEmpty ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // User & Port
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: TextFormField(
-                          controller: _userController,
-                          decoration: const InputDecoration(
-                            labelText: 'Username',
-                          ),
-                          validator: (v) =>
-                              v!.trim().isEmpty ? 'Required' : null,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 1,
-                        child: TextFormField(
-                          controller: _portController,
-                          decoration: const InputDecoration(labelText: 'Port'),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                          ],
-                          keyboardType: TextInputType.number,
-                          validator: (v) {
-                            final port = int.tryParse(v ?? '');
-                            return port == null || port <= 0 || port > 65535
-                                ? 'Invalid'
-                                : null;
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Password
-                  TextFormField(
-                    controller: _passController,
-                    obscureText: _obscurePassword,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility
-                              : Icons.visibility_off,
-                          size: 20,
-                        ),
-                        onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword,
-                        ),
-                      ),
-                    ),
-                    validator: (v) => v!.isEmpty ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Connect Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isConnecting ? null : _connect,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: _isConnecting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Connect'),
-                    ),
-                  ),
-                ],
-              ),
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildHeader(theme),
+                const SizedBox(height: 48),
+                ConnectionForm(
+                  formKey: _formKey,
+                  hostController: _hostController,
+                  userController: _userController,
+                  passController: _passController,
+                  portController: _portController,
+                  obscurePassword: _obscurePassword,
+                  onTogglePassword: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
+                ),
+                const SizedBox(height: 48),
+                _buildConnectButton(),
+              ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildHeader(ThemeData theme) {
+    return Column(
+      children: [
+        Icon(Icons.cloud_outlined, size: 64, color: theme.colorScheme.primary),
+        const SizedBox(height: 24),
+        Text(
+          'VelociFTP',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w300,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Connect to your server',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildConnectButton() {
+    return ElevatedButton(
+      onPressed: _isConnecting ? null : _connect,
+      style: ElevatedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: _isConnecting
+          ? const SizedBox.square(
+              dimension: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: Colors.white,
+              ),
+            )
+          : const Text('Connect', style: TextStyle(fontSize: 16)),
     );
   }
 }

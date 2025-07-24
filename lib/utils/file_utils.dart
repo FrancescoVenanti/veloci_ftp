@@ -6,7 +6,6 @@ Future<String?> getDownloadDirectory() async {
   if (kIsWeb) return null;
 
   if (Platform.isAndroid) {
-    //
     // import 'package:downloads_path_provider_28/downloads_path_provider_28.dart';
     // Use external downloads directory
     throw Exception("android not handled");

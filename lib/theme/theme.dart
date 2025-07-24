@@ -268,6 +268,8 @@ class ZenTheme {
 }
 
 // Custom decorations for paper-like effects
+// Update this part in lib/theme/theme.dart
+
 class ZenDecorations {
   static BoxDecoration get paperCard => BoxDecoration(
     color: ZenColors.paperWhite,
@@ -289,14 +291,17 @@ class ZenDecorations {
     ],
   );
 
-  static BoxDecoration get paperBackground => const BoxDecoration(
-    color: ZenColors.paperWhite,
-    image: DecorationImage(
-      image: AssetImage(
-        'assets/images/paper_texture.png',
-      ), // Optional paper texture
-      fit: BoxFit.cover,
-      opacity: 0.03,
+  // Option 1: Remove paper texture completely
+  static BoxDecoration get paperBackground =>
+      const BoxDecoration(color: ZenColors.paperWhite);
+
+  // Option 2: Or add a subtle gradient instead
+  static BoxDecoration get paperBackgroundGradient => const BoxDecoration(
+    gradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [ZenColors.paperWhite, ZenColors.paperCream],
+      stops: [0.0, 1.0],
     ),
   );
 

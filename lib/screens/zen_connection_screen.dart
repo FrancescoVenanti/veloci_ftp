@@ -3,13 +3,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:veloci_client/theme/theme.dart';
-import '../services/ftp_service.dart';
 import '../models/ftp_session.dart';
-import '../widgets/zen_session_side_panel.dart';
-import 'ftp_home_page.dart';
+import '../services/session_manager.dart';
+import '../services/session_service.dart';
 
 class ZenConnectionScreen extends StatefulWidget {
-  const ZenConnectionScreen({super.key});
+  final bool isQuickConnect;
+
+  const ZenConnectionScreen({super.key, this.isQuickConnect = false});
 
   @override
   State<ZenConnectionScreen> createState() => _ZenConnectionScreenState();
@@ -22,6 +23,7 @@ class _ZenConnectionScreenState extends State<ZenConnectionScreen>
   final _userController = TextEditingController(text: 'demo');
   final _passController = TextEditingController(text: 'password');
   final _portController = TextEditingController(text: '21');
+  final _nameController = TextEditingController();
 
   late AnimationController _formAnimationController;
   late AnimationController _breathingController;
@@ -31,7 +33,7 @@ class _ZenConnectionScreenState extends State<ZenConnectionScreen>
 
   bool _obscurePassword = true;
   bool _isConnecting = false;
-  bool _isSessionPanelExpanded = false;
+  bool _saveSession = false;
 
   @override
   void initState() {
@@ -75,59 +77,50 @@ class _ZenConnectionScreenState extends State<ZenConnectionScreen>
     _userController.dispose();
     _passController.dispose();
     _portController.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
   Future<void> _connect() async {
     if (!_formKey.currentState!.validate() || _isConnecting) return;
 
-    // Gentle haptic feedback
     HapticFeedback.lightImpact();
-
     setState(() => _isConnecting = true);
 
-    final ftpService = FTPService(
-      host: _hostController.text.trim(),
-      user: _userController.text.trim(),
-      pass: _passController.text,
-      port: int.tryParse(_portController.text.trim()) ?? 21,
-    );
-
     try {
-      await ftpService.connect();
+      // Create session object
+      final session = FTPSession(
+        id: SessionService.instance.generateId(),
+        name: _nameController.text.trim().isEmpty
+            ? '${_userController.text.trim()}@${_hostController.text.trim()}'
+            : _nameController.text.trim(),
+        host: _hostController.text.trim(),
+        username: _userController.text.trim(),
+        password: _passController.text,
+        port: int.tryParse(_portController.text.trim()) ?? 21,
+      );
+
+      // Save session if requested
+      if (_saveSession) {
+        await SessionService.instance.addSession(session);
+      }
+
+      // Open session window
+      await SessionManager.instance.openSessionWindow(session);
 
       if (mounted) {
-        // Success haptic
         HapticFeedback.selectionClick();
 
-        Navigator.push(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) =>
-                FTPHomePage(ftpService: ftpService),
-            transitionsBuilder:
-                (context, animation, secondaryAnimation, child) {
-                  return SlideTransition(
-                    position:
-                        Tween<Offset>(
-                          begin: const Offset(1.0, 0.0),
-                          end: Offset.zero,
-                        ).animate(
-                          CurvedAnimation(
-                            parent: animation,
-                            curve: Curves.easeOutCubic,
-                          ),
-                        ),
-                    child: child,
-                  );
-                },
-            transitionDuration: const Duration(milliseconds: 400),
-          ),
-        );
+        // If this is a quick connect modal, close it
+        if (widget.isQuickConnect) {
+          Navigator.of(context).pop();
+        } else {
+          // Navigate to main app
+          Navigator.of(context).pushReplacementNamed('/main');
+        }
       }
     } catch (e) {
       if (mounted) {
-        // Error haptic
         HapticFeedback.heavyImpact();
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -169,109 +162,100 @@ class _ZenConnectionScreenState extends State<ZenConnectionScreen>
     }
   }
 
-  void _onSessionSelected(FTPSession session) {
-    // Gentle haptic feedback
-    HapticFeedback.selectionClick();
-
-    setState(() {
-      _hostController.text = session.host;
-      _userController.text = session.username;
-      _passController.text = session.password;
-      _portController.text = session.port.toString();
-      _isSessionPanelExpanded = false;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Icon(
-                Icons.bookmark_rounded,
-                color: Colors.white,
-                size: 16,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'Session "${session.name}" loaded',
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-          ],
-        ),
-        backgroundColor: ZenColors.successGreen,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Theme(
       data: ZenTheme.lightTheme,
       child: Scaffold(
         backgroundColor: ZenColors.paperWhite,
+        appBar: widget.isQuickConnect ? _buildQuickConnectAppBar() : null,
         body: Container(
           decoration: ZenDecorations.paperBackground,
-          child: Row(
-            children: [
-              // Session side panel
-              ZenSessionSidePanel(
-                isExpanded: _isSessionPanelExpanded,
-                onToggle: () {
-                  HapticFeedback.lightImpact();
-                  setState(
-                    () => _isSessionPanelExpanded = !_isSessionPanelExpanded,
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: AnimatedBuilder(
+                animation: _formAnimationController,
+                builder: (context, child) {
+                  return Transform.translate(
+                    offset: Offset(0, _formSlideAnimation.value),
+                    child: FadeTransition(
+                      opacity: _formFadeAnimation,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 440),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (!widget.isQuickConnect) _buildHeader(),
+                            if (!widget.isQuickConnect)
+                              const SizedBox(height: 48),
+                            _buildConnectionCard(),
+                          ],
+                        ),
+                      ),
+                    ),
                   );
                 },
-                onSessionSelected: _onSessionSelected,
               ),
-              // Main content
-              Expanded(child: _buildMainContent()),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildMainContent() {
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: AnimatedBuilder(
-          animation: _formAnimationController,
-          builder: (context, child) {
-            return Transform.translate(
-              offset: Offset(0, _formSlideAnimation.value),
-              child: FadeTransition(
-                opacity: _formFadeAnimation,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildHeader(),
-                      const SizedBox(height: 48),
-                      _buildConnectionCard(),
-                      const SizedBox(height: 32),
-                      if (!_isSessionPanelExpanded) _buildSessionHint(),
-                    ],
-                  ),
-                ),
+  PreferredSizeWidget _buildQuickConnectAppBar() {
+    return AppBar(
+      backgroundColor: ZenColors.paperWhite,
+      foregroundColor: ZenColors.charcoal,
+      elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: ZenColors.primarySage.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: ZenColors.primarySage.withOpacity(0.2),
+                width: 1,
               ),
-            );
-          },
+            ),
+            child: const Icon(
+              Icons.add_rounded,
+              color: ZenColors.primarySage,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            'Quick Connect',
+            style: ZenTextStyles.titleLarge.copyWith(
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+      leading: IconButton(
+        icon: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: ZenColors.mediumGray.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: ZenColors.mediumGray.withOpacity(0.2),
+              width: 1,
+            ),
+          ),
+          child: const Icon(
+            Icons.close_rounded,
+            color: ZenColors.mediumGray,
+            size: 18,
+          ),
         ),
+        onPressed: () => Navigator.of(context).pop(),
       ),
     );
   }
@@ -335,7 +319,7 @@ class _ZenConnectionScreenState extends State<ZenConnectionScreen>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Server Connection',
+              widget.isQuickConnect ? 'New Connection' : 'Server Connection',
               style: ZenTextStyles.titleLarge.copyWith(
                 fontWeight: FontWeight.w600,
                 color: ZenColors.charcoal,
@@ -349,6 +333,16 @@ class _ZenConnectionScreenState extends State<ZenConnectionScreen>
               ),
             ),
             const SizedBox(height: 32),
+
+            // Session name (optional)
+            _buildTextField(
+              controller: _nameController,
+              label: 'Session Name (Optional)',
+              hint: 'My FTP Server',
+              icon: Icons.bookmark_outline_rounded,
+            ),
+            const SizedBox(height: 24),
+
             _buildTextField(
               controller: _hostController,
               label: 'Host Address',
@@ -421,6 +415,85 @@ class _ZenConnectionScreenState extends State<ZenConnectionScreen>
               ),
               validator: (v) => v!.isEmpty ? 'Password is required' : null,
             ),
+
+            const SizedBox(height: 24),
+
+            // Save session checkbox
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  setState(() => _saveSession = !_saveSession);
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _saveSession
+                        ? ZenColors.accentTeal.withOpacity(0.05)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _saveSession
+                          ? ZenColors.accentTeal.withOpacity(0.2)
+                          : ZenColors.softGray,
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: _saveSession
+                              ? ZenColors.accentTeal
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: _saveSession
+                                ? ZenColors.accentTeal
+                                : ZenColors.mediumGray,
+                            width: 2,
+                          ),
+                        ),
+                        child: _saveSession
+                            ? const Icon(
+                                Icons.check_rounded,
+                                color: Colors.white,
+                                size: 14,
+                              )
+                            : null,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Save this session',
+                              style: ZenTextStyles.bodyMedium.copyWith(
+                                fontWeight: FontWeight.w500,
+                                color: ZenColors.charcoal,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Add to saved sessions for quick access',
+                              style: ZenTextStyles.labelMedium.copyWith(
+                                color: ZenColors.mediumGray,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
             const SizedBox(height: 40),
             _buildConnectButton(),
           ],
@@ -582,7 +655,9 @@ class _ZenConnectionScreenState extends State<ZenConnectionScreen>
                   const Icon(Icons.wifi_rounded, size: 20),
                   const SizedBox(width: 12),
                   Text(
-                    'Connect to Server',
+                    widget.isQuickConnect
+                        ? 'Connect & Open'
+                        : 'Connect to Server',
                     style: ZenTextStyles.bodyLarge.copyWith(
                       fontWeight: FontWeight.w600,
                       fontSize: 16,
@@ -591,102 +666,6 @@ class _ZenConnectionScreenState extends State<ZenConnectionScreen>
                   ),
                 ],
               ),
-      ),
-    );
-  }
-
-  Widget _buildSessionHint() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: ZenColors.accentTeal.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: ZenColors.accentTeal.withOpacity(0.1),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: ZenColors.accentTeal.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.bookmark_outline_rounded,
-              color: ZenColors.accentTeal,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Save your connections',
-                  style: ZenTextStyles.bodyMedium.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: ZenColors.charcoal,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Create sessions for quick access to your servers',
-                  style: ZenTextStyles.labelMedium.copyWith(
-                    color: ZenColors.mediumGray,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                setState(() => _isSessionPanelExpanded = true);
-              },
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: ZenColors.accentTeal.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: ZenColors.accentTeal.withOpacity(0.2),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'View Sessions',
-                      style: ZenTextStyles.labelMedium.copyWith(
-                        color: ZenColors.accentTeal,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(
-                      Icons.arrow_forward_rounded,
-                      color: ZenColors.accentTeal,
-                      size: 14,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

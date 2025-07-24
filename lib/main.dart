@@ -1,9 +1,10 @@
-// lib/main.dart
+// lib/main.dart - Updated for multi-session system
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:veloci_client/theme/theme.dart';
 import 'screens/zen_connection_screen.dart';
+import 'screens/multi_session_app.dart';
 
 void main() {
   runApp(const VelociFTPApp());
@@ -38,7 +39,12 @@ class VelociFTPApp extends StatelessWidget {
       title: 'VelociFTP',
       debugShowCheckedModeBanner: false,
       theme: ZenTheme.lightTheme,
-      home: const ZenConnectionScreen(),
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const MultiSessionApp(),
+        '/connect': (context) => const ZenConnectionScreen(),
+        '/main': (context) => const MultiSessionApp(),
+      },
       builder: (context, child) {
         // Ensure consistent text scaling and handle edge cases
         return MediaQuery(
@@ -164,10 +170,3 @@ class ZenPageRoute<T> extends PageRoute<T> {
     return child;
   }
 }
-
-// Usage example:
-// Navigator.of(context).push(
-//   ZenPageRoute(
-//     builder: (context) => YourScreen(),
-//   ),
-// );

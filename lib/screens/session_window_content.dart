@@ -1,10 +1,14 @@
 // lib/screens/session_window_content.dart
 
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:async_wrapper/async_wrapper.dart';
 import 'package:ftpconnect/ftpconnect.dart';
 import 'package:intl/intl.dart';
+import 'package:veloci_client/services/ftp_service.dart';
 import 'package:veloci_client/theme/theme.dart';
 import '../models/session_window.dart';
 import '../services/session_manager.dart';
@@ -625,39 +629,23 @@ class _SessionWindowContentState extends State<SessionWindowContent>
       bottom: 20,
       right: 20,
       child: FloatingActionButton.extended(
-        onPressed: () {
+        onPressed: () async {
           HapticFeedback.lightImpact();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Icon(
-                      Icons.construction_rounded,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Upload functionality is coming soon',
-                    style: TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                ],
+          final result = await FilePicker.platform.pickFiles();
+
+          if (result != null && result.files.single.path != null) {
+            final path = result.files.single.path!;
+            _uploadFile(path); // Call your upload method with the selected path
+          } else {
+            // User canceled the picker
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('No file selected.'),
+                backgroundColor: ZenColors.warningOrange,
+                behavior: SnackBarBehavior.floating,
               ),
-              backgroundColor: ZenColors.accentBlue,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              margin: const EdgeInsets.all(16),
-            ),
-          );
+            );
+          }
         },
         backgroundColor: ZenColors.primarySage,
         foregroundColor: Colors.white,
@@ -1136,6 +1124,99 @@ class _SessionWindowContentState extends State<SessionWindowContent>
         return ZenColors.errorRed;
       case SessionStatus.disconnected:
         return ZenColors.mediumGray;
+    }
+  }
+
+  void _uploadFile(String localFilePath) async {
+    final fileName = localFilePath.split(Platform.pathSeparator).last;
+    final remotePath = _buildRemotePath(fileName);
+
+    try {
+      final file = File(localFilePath);
+
+      if (!await file.exists()) {
+        throw Exception('Selected file does not exist.');
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: const CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text('Uploading $fileName...'),
+            ],
+          ),
+          backgroundColor: ZenColors.accentBlue,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      if (_currentWindow?.ftpService == null) {
+        debugPrint("asdasddsaasdsadasdasadsadsdasdasads");
+        return;
+      }
+      await _currentWindow!.ftpService!.uploadFile(localFilePath, remotePath);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Icon(
+                    Icons.check_rounded,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text('Uploaded $fileName to FTP server'),
+              ],
+            ),
+            backgroundColor: ZenColors.successGreen,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Icon(
+                    Icons.error_outline_rounded,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: Text('Upload failed: $e')),
+              ],
+            ),
+            backgroundColor: ZenColors.errorRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 }

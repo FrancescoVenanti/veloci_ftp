@@ -62,4 +62,20 @@ class FTPService {
   Future<void> deleteFile(String path) async {
     await _ftp.deleteFile(path);
   }
+
+  /// Uploads a local file to the specified remote path.
+  /// Assumes an active connection.
+  Future<void> uploadFile(String localPath, String remotePath) async {
+    final file = File(localPath);
+
+    if (!await file.exists()) {
+      throw Exception('Local file does not exist: $localPath');
+    }
+
+    final success = await _ftp.uploadFile(file, sRemoteName: remotePath);
+
+    if (!success) {
+      throw Exception('Failed to upload $localPath to $remotePath');
+    }
+  }
 }

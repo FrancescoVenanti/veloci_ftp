@@ -1,16 +1,27 @@
-# veloci_client
+# Veloci-FTP
 
-A new Flutter project.
+**Veloci-FTP** is a minimal, lightweight, and functional FTP client built with Flutter. Designed for speed, simplicity, and beautiful visuals, it's perfect for quick and efficient file transfers.
 
-## Getting Started
+<!--![Veloci-FTP Screenshot](screenshot.png)  -->
 
-This project is a starting point for a Flutter application.
+---
 
-A few resources to get you started if this is your first Flutter project:
+## 🚀 Features
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+- ✅ Fast and responsive interface
+- 🎨 Clean and modern UI
+- 📁 Essential FTP functionality (connect, upload, download, etc.)
+- 🪶 Lightweight and easy to use
+- 🧪 Cross-platform support via Flutter
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+---
+
+## 🔧 Getting Started
+
+To run Veloci-FTP locally:
+
+```bash
+git clone https://github.com/yourusername/veloci-ftp.git
+cd veloci-ftp
+flutter pub get
+flutter run
